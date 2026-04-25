@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "garmin": {
+      "command": "uv",
+      "args": [
+        "--directory",
+        "/Users/rohanmathure/Projects/garmin_mcp_server",
+        "run",
+        "garmin-mcp"
+      ]
+    }
+  }
+}

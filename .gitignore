@@ -1,0 +1,9 @@
+.env
+__pycache__/
+*.egg-info/
+.garminconnect/
+dist/
+build/
+.venv/
+uv.lock
+*.pyc

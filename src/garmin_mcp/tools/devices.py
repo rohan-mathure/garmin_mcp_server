@@ -24,7 +24,9 @@ async def get_device_info(ctx: Context, device_id: int) -> dict:
 async def list_gear(ctx: Context) -> list:
     """List all gear and equipment (shoes, bikes, etc.) tracked in Garmin Connect."""
     garmin = await ensure_authenticated(ctx)
-    user_info = await asyncio.to_thread(garmin.get_user_summary, __import__("datetime").date.today().isoformat())
+    user_info = await asyncio.to_thread(
+        garmin.get_user_summary, __import__("datetime").date.today().isoformat()
+    )
     user_hash = user_info.get("userProfileId") or user_info.get("userId", "")
     return await asyncio.to_thread(garmin.get_gear, user_hash)
 

@@ -102,6 +102,73 @@ printf '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion
   | timeout 3 uv run garmin-mcp
 ```
 
+## Testing and Linting
+
+### Setup dev dependencies
+
+```bash
+uv sync --extra dev
+```
+
+### Linting
+
+```bash
+uv run ruff check src/ tests/          # check for errors
+uv run ruff check --fix src/ tests/    # auto-fix where possible
+uv run ruff format src/ tests/         # apply formatting
+uv run ruff format --check src/ tests/ # check formatting without changing files
+```
+
+### Running Tests
+
+```bash
+uv run pytest                                    # full suite with coverage report
+uv run pytest tests/test_tools_daily.py -v       # single file
+uv run pytest -k "test_get_steps" -v             # single test by name
+uv run pytest --no-cov                           # faster iteration (skip coverage)
+```
+
+Coverage report is printed to the terminal and written to `coverage.xml`.
+
+### CI
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` and every PR targeting `main`. Two jobs run in sequence:
+
+1. **Lint** — `ruff check` + `ruff format --check`. Fails fast on any lint or formatting error.
+2. **Test** — `pytest` with coverage. Only runs if Lint passes.
+
+To require CI before merging PRs, enable branch protection in the GitHub repo settings:
+**Settings → Branches → Add rule** for `main` and check **"Require status checks to pass before merging"**, selecting `Test / Test`.
+
+### Mock pattern for new tools
+
+All tools follow the same async pattern. To test a new tool:
+
+1. Patch `ensure_authenticated` in the tool's own module namespace:
+
+```python
+mocker.patch(
+    "garmin_mcp.tools.<module>.ensure_authenticated",
+    new=AsyncMock(return_value=mock_garmin),
+)
+```
+
+2. Use the `patch_to_thread` fixture (defined in `tests/conftest.py`) to run `asyncio.to_thread` calls synchronously:
+
+```python
+async def test_my_tool(mock_garmin, mock_ctx, mocker, patch_to_thread):
+    ...
+```
+
+3. For tools with multiple sequential `asyncio.to_thread` calls (e.g. `list_gear`), override with a `side_effect` list:
+
+```python
+mocker.patch(
+    "asyncio.to_thread",
+    new=AsyncMock(side_effect=[first_return_value, second_return_value]),
+)
+```
+
 ## Key Libraries
 
 | Library | Purpose |

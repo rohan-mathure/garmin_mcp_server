@@ -4,7 +4,6 @@ import asyncio
 import logging
 import os
 import threading
-from typing import Optional
 
 from dotenv import load_dotenv
 from garminconnect import Garmin, GarminConnectAuthenticationError
@@ -15,7 +14,7 @@ from garmin_mcp.models import CredentialsInput, MFAInput
 load_dotenv()
 logger = logging.getLogger(__name__)
 
-_client: Optional[Garmin] = None
+_client: Garmin | None = None
 
 
 async def _resolve_credentials(ctx: Context) -> tuple[str, str]:

@@ -22,6 +22,7 @@ async def garmin_login(ctx: Context) -> str:
 async def garmin_logout(ctx: Context) -> str:
     """Logout from Garmin Connect and clear the saved session tokens."""
     import garmin_mcp.client as client_module
+
     garmin = client_module._client
     if garmin is None:
         return "Not currently authenticated"
@@ -38,6 +39,7 @@ async def garmin_logout(ctx: Context) -> str:
 async def garmin_auth_status() -> dict:
     """Check current authentication status and token file location."""
     import garmin_mcp.client as client_module
+
     token_path = Path.home() / ".garminconnect" / "garmin_tokens.json"
     return {
         "authenticated": client_module._client is not None,

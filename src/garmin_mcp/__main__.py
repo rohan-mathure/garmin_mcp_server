@@ -1,11 +1,11 @@
-from garmin_mcp.server import mcp
+import garmin_mcp.tools.activities  # noqa: F401
 
 # Import all tool modules to register their @mcp.tool() decorators
 import garmin_mcp.tools.auth  # noqa: F401
-import garmin_mcp.tools.daily  # noqa: F401
-import garmin_mcp.tools.activities  # noqa: F401
 import garmin_mcp.tools.body  # noqa: F401
+import garmin_mcp.tools.daily  # noqa: F401
 import garmin_mcp.tools.devices  # noqa: F401
+from garmin_mcp.server import mcp
 
 
 def main() -> None:

@@ -7,3 +7,5 @@ build/
 .venv/
 uv.lock
 *.pyc
+.coverage
+coverage.xml

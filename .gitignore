@@ -9,3 +9,4 @@ uv.lock
 *.pyc
 .coverage
 coverage.xml
+.mcp.json

@@ -5,6 +5,7 @@ import garmin_mcp.tools.auth  # noqa: F401
 import garmin_mcp.tools.body  # noqa: F401
 import garmin_mcp.tools.daily  # noqa: F401
 import garmin_mcp.tools.devices  # noqa: F401
+import garmin_mcp.tools.trends  # noqa: F401
 from garmin_mcp.server import mcp
 
 

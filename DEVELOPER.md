@@ -4,38 +4,87 @@
 
 ```
 garmin_mcp_server/
-├── pyproject.toml               # deps, entry point (garmin-mcp script)
-├── .env.example                 # credential template
-├── .mcp.json                    # Claude Code server registration
-└── src/garmin_mcp/
-    ├── __main__.py              # entry point; imports tools to trigger registration
-    ├── server.py                # FastMCP("garmin") singleton
-    ├── client.py                # Garmin client singleton + MFA bridge
-    ├── models.py                # Pydantic models for ctx.elicit() schemas
-    └── tools/
-        ├── auth.py              # login, logout, status
-        ├── daily.py             # daily health stats
-        ├── activities.py        # activity list/detail/download
-        ├── body.py              # body metrics + training metrics
-        └── devices.py           # devices, gear, goals, badges
+├── pyproject.toml                 # deps, entry points (garmin-mcp, garmin-cli)
+├── docker-compose.yml             # TimescaleDB + scraper stack
+├── docker/scraper/Dockerfile      # scraper container
+├── .env.example                   # credential template
+├── .mcp.json                      # Claude Code server registration
+├── src/garmin_mcp/
+│   ├── __main__.py                # MCP entry; imports all tools
+│   ├── server.py                  # FastMCP("garmin") singleton
+│   ├── service.py                 # GarminService + auth protocols
+│   ├── client.py                  # MCP adapter (ctx.elicit + threading bridge)
+│   ├── models.py                  # Pydantic models for elicit schemas
+│   ├── tools/
+│   │   ├── auth.py
+│   │   ├── daily.py
+│   │   ├── activities.py
+│   │   ├── body.py
+│   │   ├── devices.py
+│   │   └── trends.py              # NEW: TimescaleDB time-series tools
+│   ├── cli/                       # NEW: typer CLI
+│   │   ├── __main__.py
+│   │   ├── auth_adapter.py        # env + typer.prompt()
+│   │   ├── output.py              # rich console helpers
+│   │   └── commands/
+│   │       ├── auth.py, daily.py, activities.py, body.py, devices.py
+│   ├── db/                        # NEW: TimescaleDB schema + init
+│   │   ├── init.py
+│   │   └── schema.sql
+│   └── scraper/                   # NEW: APScheduler data pipeline
+│       ├── __main__.py
+│       ├── auth_adapter.py
+│       ├── writer.py              # upsert functions
+│       ├── scheduler.py           # APScheduler jobs
+│       └── collectors/
+│           ├── daily.py, body.py, activities.py
+└── tests/
+    ├── conftest.py
+    ├── test_client.py
+    ├── test_service.py            # NEW
+    ├── test_db_init.py            # NEW
+    ├── test_tools_*.py
 ```
+
+## Architecture: Shared Backend (NEW)
+
+All three interfaces use the same **`GarminService`** class via callback-based auth:
+
+```
+GarminService (service.py)
+    ├─ CredentialProvider protocol (async callback for email/password)
+    └─ MFAProvider protocol (sync callback for OTP code)
+
+Adapters:
+    ├─ client.py → MCP adapter: ctx.elicit() + threading bridge
+    ├─ cli/auth_adapter.py → CLI adapter: env + typer.prompt()
+    └─ scraper/auth_adapter.py → env-only (raises if missing)
+
+All 28 tools untouched
++ 3 new trends tools (query TimescaleDB via psycopg2)
+```
+
+**Why:** Removes MCP `ctx` dependency from auth logic. MCP, CLI, and scraper all share the same business logic but inject different credential/MFA providers.
 
 ## Dependency Graph
 
 ```
+service.py        ← no internal deps (pure auth logic)
 models.py         ← no internal deps
 server.py         ← no internal deps
-client.py         ← models.py
+client.py         ← service.py, models.py
 tools/*.py        ← server.py, client.py
-__main__.py       ← server.py + all tools/  (triggers @mcp.tool() registration)
+db/init.py        ← no internal deps
+scraper/*         ← service.py, db/init.py, tools via garminconnect
+cli/*             ← service.py
+__main__.py       ← server.py + all tools/ (triggers @mcp.tool() registration)
 ```
 
-No circular imports. `server.py` never imports from `tools/`.
+No circular imports. `server.py` never imports from `tools/`, `cli/`, or `scraper/`.
 
-## Adding a New Tool
+## Adding a New Tool (unchanged pattern)
 
-1. Pick or create a file in `tools/` that matches the category.
-2. Add the tool function:
+1. Add to `tools/<category>.py`:
 
 ```python
 from garmin_mcp.client import ensure_authenticated
@@ -45,25 +94,92 @@ import asyncio
 
 @mcp.tool()
 async def my_new_tool(ctx: Context, cdate: str = "") -> dict:
-    """One-line description shown to Claude."""
+    """One-line description."""
     garmin = await ensure_authenticated(ctx)
     return await asyncio.to_thread(garmin.some_method, cdate)
 ```
 
-3. If the tool is in a new file, import it in `__main__.py`:
+2. Import in `__main__.py`:
 
 ```python
 import garmin_mcp.tools.my_new_file  # noqa: F401
 ```
 
 Rules:
-- Always call `await ensure_authenticated(ctx)` first — never access `_client` directly.
-- Always wrap blocking `garminconnect` calls with `asyncio.to_thread()`.
-- Never `print()` to stdout — breaks the JSON-RPC stdio protocol. Use `logging` (goes to stderr).
+- Always call `await ensure_authenticated(ctx)` — never access `_client` directly
+- Wrap blocking `garminconnect` calls with `asyncio.to_thread()`
+- No `print()` to stdout (breaks JSON-RPC). Use `logging` (goes to stderr)
 
-## Auth & MFA Bridge
+## Adding a New CLI Command
 
-`garminconnect.login()` is **synchronous** and calls a `prompt_mfa()` callback if Garmin requires MFA. `ctx.elicit()` is **async**. The bridge in `client.py`:
+1. Add to `cli/commands/<group>.py`:
+
+```python
+import typer
+from garmin_mcp.cli.auth_adapter import get_garmin_client
+from garmin_mcp.cli.output import print_json, print_error
+
+app = typer.Typer(help="Command group")
+
+@app.command()
+def my_command(date: str = typer.Option("", "--date", "-d")):
+    """Command description."""
+    async def _run():
+        try:
+            garmin = await get_garmin_client()
+            return await asyncio.to_thread(garmin.some_method, date or date.today().isoformat())
+        except Exception as e:
+            print_error(str(e))
+            raise typer.Exit(1)
+    print_json(asyncio.run(_run()))
+```
+
+2. Register in `cli/__main__.py`:
+
+```python
+from garmin_mcp.cli.commands import my_group
+app.add_typer(my_group.app, name="my-group")
+```
+
+## Adding a Scraper Collector
+
+1. Create `scraper/collectors/<type>.py`:
+
+```python
+import asyncio
+from garminconnect import Garmin
+
+async def collect_<type>_for_date(garmin: Garmin, d: str) -> dict:
+    """Fetch and normalize <type> data for a single date."""
+    raw = await asyncio.to_thread(garmin.get_<method>, d)
+    return {
+        "date": d,
+        "field1": raw.get("key1"),
+        "field2": raw.get("key2"),
+    }
+```
+
+2. Register job in `scraper/scheduler.py`:
+
+```python
+async def scrape_<type>_job(garmin: Garmin) -> None:
+    """Scrape <type> data."""
+    logger.info("Starting <type> scrape...")
+    # ... collect and upsert
+    logger.info("<type> scrape complete")
+
+scheduler.add_job(
+    scrape_<type>_job,
+    CronTrigger(hour=<H>, minute=<M>),
+    id="<type>_scrape",
+    replace_existing=True,
+    args=[garmin],
+)
+```
+
+## Auth & MFA Bridge (unchanged)
+
+`garminconnect.login()` is sync and calls `prompt_mfa()` if needed. `ctx.elicit()` is async. The bridge in `client.py`:
 
 ```
 event loop thread                 executor thread
@@ -82,91 +198,74 @@ call_soon_threadsafe ◄────────┘
   user enters OTP
        │
   code_ready.set() ──────────────► code_ready.wait() unblocks
-                                       │
-                                   returns OTP to login()
 ```
-
-`code_ready.wait(timeout=120)` blocks the executor thread, not the event loop, so both sides run concurrently.
 
 ## Running Locally
 
+### MCP Server
 ```bash
-# Start server (stdio mode — used by Claude)
 uv run garmin-mcp
-
-# Inspect tools interactively
-npx @modelcontextprotocol/inspector uv run garmin-mcp
-
-# Quick smoke test (check tools/list)
-printf '{"jsonrpc":"2.0","method":"initialize","id":1,"params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"0"}}}\n{"jsonrpc":"2.0","method":"tools/list","id":2,"params":{}}\n' \
-  | timeout 3 uv run garmin-mcp
 ```
 
-## Testing and Linting
+### CLI
+```bash
+uv run garmin-cli daily steps
+uv run garmin-cli activities list
+```
+
+### Scraper (without Docker)
+Requires local TimescaleDB or Docker container running:
+```bash
+export TIMESCALE_URL=postgresql://garmin:garmin@localhost:5432/garmin
+uv run python -m garmin_mcp.scraper
+```
+
+### Full Docker Stack
+```bash
+docker compose up --build
+docker compose logs scraper  # Monitor scraper
+docker compose exec timescaledb psql -U garmin -d garmin -c "\dt"  # Verify tables
+```
+
+## Testing & Linting
 
 ### Setup dev dependencies
-
 ```bash
-uv sync --extra dev
+uv sync --all-extras
 ```
 
 ### Linting
-
 ```bash
-uv run ruff check src/ tests/          # check for errors
-uv run ruff check --fix src/ tests/    # auto-fix where possible
-uv run ruff format src/ tests/         # apply formatting
-uv run ruff format --check src/ tests/ # check formatting without changing files
+uv run ruff check src/ tests/
+uv run ruff format src/ tests/
 ```
 
 ### Running Tests
-
 ```bash
-uv run pytest                                    # full suite with coverage report
-uv run pytest tests/test_tools_daily.py -v       # single file
-uv run pytest -k "test_get_steps" -v             # single test by name
-uv run pytest --no-cov                           # faster iteration (skip coverage)
+uv run pytest                      # Full suite with coverage
+uv run pytest --no-cov             # Faster iteration
+uv run pytest -k "test_service" -v # Single test by keyword
 ```
 
-Coverage report is printed to the terminal and written to `coverage.xml`.
+Coverage enforced at 90% via CI. Tests for new modules (scraper, cli, db, trends) needed for full coverage.
 
 ### CI
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` and PRs:
+1. **Lint** — `ruff check` + `ruff format --check`
+2. **Test** — `pytest --cov=src/garmin_mcp --cov-fail-under=90`
 
-GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `main` and every PR targeting `main`. Two jobs run in sequence:
+## Mock Pattern for Tools (unchanged)
 
-1. **Lint** — `ruff check` + `ruff format --check`. Fails fast on any lint or formatting error.
-2. **Test** — `pytest` with coverage. Only runs if Lint passes.
-
-To require CI before merging PRs, enable branch protection in the GitHub repo settings:
-**Settings → Branches → Add rule** for `main` and check **"Require status checks to pass before merging"**, selecting `Test / Test`.
-
-### Mock pattern for new tools
-
-All tools follow the same async pattern. To test a new tool:
-
-1. Patch `ensure_authenticated` in the tool's own module namespace:
-
-```python
-mocker.patch(
-    "garmin_mcp.tools.<module>.ensure_authenticated",
-    new=AsyncMock(return_value=mock_garmin),
-)
-```
-
-2. Use the `patch_to_thread` fixture (defined in `tests/conftest.py`) to run `asyncio.to_thread` calls synchronously:
+Test new tools:
 
 ```python
 async def test_my_tool(mock_garmin, mock_ctx, mocker, patch_to_thread):
-    ...
-```
-
-3. For tools with multiple sequential `asyncio.to_thread` calls (e.g. `list_gear`), override with a `side_effect` list:
-
-```python
-mocker.patch(
-    "asyncio.to_thread",
-    new=AsyncMock(side_effect=[first_return_value, second_return_value]),
-)
+    mocker.patch(
+        "garmin_mcp.tools.<module>.ensure_authenticated",
+        new=AsyncMock(return_value=mock_garmin),
+    )
+    result = await my_tool(mock_ctx, ...)
+    assert result == ...
 ```
 
 ## Key Libraries
@@ -174,17 +273,63 @@ mocker.patch(
 | Library | Purpose |
 |---------|---------|
 | `garminconnect` | Garmin Connect API wrapper (131+ endpoints) |
-| `curl_cffi` | TLS fingerprint impersonation — required to bypass Garmin's Cloudflare WAF |
+| `curl_cffi` | TLS fingerprint impersonation (bypass Cloudflare WAF) |
 | `mcp[cli]` | FastMCP framework (Anthropic) |
+| `typer` | CLI framework (new) |
+| `rich` | Rich console output (new) |
+| `apscheduler` | Periodic job scheduling (new) |
+| `psycopg2-binary` | PostgreSQL driver (new) |
 | `python-dotenv` | `.env` file loading |
 
-## Garmin API Notes
+## TimescaleDB Schema (NEW)
 
-- No official API keys — all access goes through the same SSO as the mobile app.
-- Tokens stored at `~/.garminconnect/garmin_tokens.json`. Auto-refreshed before each request.
-- Cloudflare WAF causes occasional rate limiting (`GarminConnectTooManyRequestsError`). The library adds randomized delays internally.
-- Method names follow `snake_case` matching the `garminconnect` library. If a method fails, check the [library source](https://github.com/cyberjunky/python-garminconnect) for the current name — Garmin changes their API periodically.
+Located in `src/garmin_mcp/db/schema.sql`. Three hypertables:
 
-## Error Handling
+| Table | Dimensions | Columns | Purpose |
+|-------|-----------|---------|---------|
+| `daily_metrics` | date | 13 (steps, HR, stress, sleep, spo2, etc.) | Daily health rollups |
+| `body_metrics` | date | 5 (weight, fat%, HRV, VO2, readiness) | Body composition |
+| `activities` | start_time | 12 (type, distance, pace, HR, power, etc.) | Workout details |
 
-Tools surface errors as return strings rather than exceptions so Claude receives the message instead of an MCP error. Re-authentication is handled automatically in `ensure_authenticated()` by catching `GarminConnectAuthenticationError`, resetting the client, and retrying login.
+Indexes on `date` (daily/body) and `activity_type, start_time DESC` (activities).
+
+All timestamps use `TIMESTAMPTZ` for UTC normalization. `scraped_at` defaults to `NOW()`.
+
+## Garmin API Notes (unchanged)
+
+- No official API keys — mirrors mobile app auth
+- Tokens stored at `~/.garminconnect/garmin_tokens.json`, auto-refreshed
+- Cloudflare WAF causes rate limiting. Library adds randomized delays
+- Method names in `garminconnect` change periodically — check [library source](https://github.com/cyberjunky/python-garminconnect) if a call fails
+
+## Error Handling (updated)
+
+### MCP Tools
+Surface errors as return strings (Claude receives the message):
+```python
+try:
+    return await asyncio.to_thread(garmin.some_method)
+except Exception as e:
+    return {"error": str(e)}
+```
+
+### CLI Commands
+Catch exceptions, use `print_error()`, exit with code 1:
+```python
+except Exception as e:
+    print_error(str(e))
+    raise typer.Exit(1)
+```
+
+### Scraper
+Log errors but don't fail the entire job. Continues to next item:
+```python
+for item in items:
+    try:
+        await collect_and_upsert(item)
+    except Exception as e:
+        logger.warning(f"Failed for {item}: {e}")
+```
+
+### Re-authentication
+Handled automatically in `GarminService.ensure_authenticated()`: catches `GarminConnectAuthenticationError`, resets client, retries login once.

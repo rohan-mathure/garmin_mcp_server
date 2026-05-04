@@ -1,10 +1,12 @@
 """Rich console helpers for CLI output."""
 
 import json
+import sys
 
 from rich.console import Console
 
 console = Console()
+error_console = Console(file=sys.stderr)
 
 
 def print_json(data):
@@ -35,4 +37,4 @@ def print_success(msg: str):
 
 def print_error(msg: str):
     """Print error message."""
-    console.print(f"[red]✗ {msg}[/red]", err=True)
+    error_console.print(f"[red]✗ {msg}[/red]")

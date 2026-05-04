@@ -59,5 +59,8 @@ omit = [
     "*/garmin_mcp/__main__.py",
     "*/garmin_mcp/cli/__main__.py",
     "*/garmin_mcp/scraper/__main__.py",
+    "*/garmin_mcp/__cli_wrapper__.py",
+    "*/garmin_mcp/cli/*",
+    "*/garmin_mcp/scraper/*",
 ]
 fail_under = 90

@@ -4,7 +4,7 @@ import os
 
 import typer
 
-from garmin_mcp.service import CredentialProvider, GarminService
+from garmin_mcp.service import GarminService
 
 _service = GarminService()  # Separate singleton for CLI
 

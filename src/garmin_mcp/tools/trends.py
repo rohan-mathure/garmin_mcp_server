@@ -28,14 +28,32 @@ VALID_METRICS = {
 }
 
 METRIC_TABLE = {
-    **{m: "daily_metrics" for m in [
-        "steps", "calories_active", "calories_bmr", "distance_meters",
-        "resting_hr", "min_hr", "max_hr", "avg_stress",
-        "sleep_score", "sleep_duration_seconds", "spo2_avg",
-    ]},
-    **{m: "body_metrics" for m in [
-        "weight_kg", "body_fat_pct", "hrv_weekly_avg", "vo2max", "training_readiness_score",
-    ]},
+    **{
+        m: "daily_metrics"
+        for m in [
+            "steps",
+            "calories_active",
+            "calories_bmr",
+            "distance_meters",
+            "resting_hr",
+            "min_hr",
+            "max_hr",
+            "avg_stress",
+            "sleep_score",
+            "sleep_duration_seconds",
+            "spo2_avg",
+        ]
+    },
+    **{
+        m: "body_metrics"
+        for m in [
+            "weight_kg",
+            "body_fat_pct",
+            "hrv_weekly_avg",
+            "vo2max",
+            "training_readiness_score",
+        ]
+    },
 }
 
 
@@ -61,19 +79,18 @@ def get_metric_trend(metric: str, days: int = 30) -> list[dict]:
     table = METRIC_TABLE[metric]
 
     try:
-        with _get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    f"""
+        with _get_conn() as conn, conn.cursor() as cur:
+            cur.execute(
+                f"""
                     SELECT date, {metric}
                     FROM {table}
                     WHERE date >= NOW() - INTERVAL %s
                       AND {metric} IS NOT NULL
                     ORDER BY date
                     """,
-                    (f"{days} days",),
-                )
-                return [{"date": str(r[0]), "value": r[1]} for r in cur.fetchall()]
+                (f"{days} days",),
+            )
+            return [{"date": str(r[0]), "value": r[1]} for r in cur.fetchall()]
     except Exception as e:
         return [{"error": str(e)}]
 
@@ -90,11 +107,10 @@ def query_health_db(sql: str) -> list[dict]:
         return [{"error": "Only SELECT/WITH queries allowed."}]
 
     try:
-        with _get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql)
-                cols = [d[0] for d in cur.description]
-                return [dict(zip(cols, row)) for row in cur.fetchall()]
+        with _get_conn() as conn, conn.cursor() as cur:
+            cur.execute(sql)
+            cols = [d[0] for d in cur.description]
+            return [dict(zip(cols, row, strict=False)) for row in cur.fetchall()]
     except Exception as e:
         return [{"error": str(e)}]
 
@@ -103,11 +119,10 @@ def query_health_db(sql: str) -> list[dict]:
 def get_health_summary(days: int = 30) -> dict:
     """Aggregated health stats across all metrics for the last N days."""
     try:
-        with _get_conn() as conn:
-            with conn.cursor() as cur:
-                # Daily stats
-                cur.execute(
-                    """
+        with _get_conn() as conn, conn.cursor() as cur:
+            # Daily stats
+            cur.execute(
+                """
                     SELECT
                         ROUND(AVG(steps)) as avg_steps,
                         MAX(steps) as max_steps,
@@ -119,19 +134,32 @@ def get_health_summary(days: int = 30) -> dict:
                     FROM daily_metrics
                     WHERE date >= NOW() - INTERVAL %s
                     """,
-                    (f"{days} days",),
+                (f"{days} days",),
+            )
+            daily_row = cur.fetchone()
+            daily = (
+                dict(
+                    zip(
+                        [
+                            "avg_steps",
+                            "max_steps",
+                            "avg_resting_hr",
+                            "avg_sleep_hours",
+                            "avg_stress",
+                            "avg_spo2",
+                            "days_with_data",
+                        ],
+                        daily_row,
+                        strict=False,
+                    )
                 )
-                daily_row = cur.fetchone()
-                daily = dict(
-                    zip([
-                        "avg_steps", "max_steps", "avg_resting_hr", "avg_sleep_hours",
-                        "avg_stress", "avg_spo2", "days_with_data"
-                    ], daily_row)
-                ) if daily_row else {}
+                if daily_row
+                else {}
+            )
 
-                # Body stats
-                cur.execute(
-                    """
+            # Body stats
+            cur.execute(
+                """
                     SELECT
                         ROUND(AVG(weight_kg), 1) as avg_weight_kg,
                         ROUND(AVG(vo2max), 1) as avg_vo2max,
@@ -140,18 +168,24 @@ def get_health_summary(days: int = 30) -> dict:
                     FROM body_metrics
                     WHERE date >= NOW() - INTERVAL %s
                     """,
-                    (f"{days} days",),
+                (f"{days} days",),
+            )
+            body_row = cur.fetchone()
+            body = (
+                dict(
+                    zip(
+                        ["avg_weight_kg", "avg_vo2max", "avg_hrv", "avg_readiness"],
+                        body_row,
+                        strict=False,
+                    )
                 )
-                body_row = cur.fetchone()
-                body = dict(
-                    zip([
-                        "avg_weight_kg", "avg_vo2max", "avg_hrv", "avg_readiness"
-                    ], body_row)
-                ) if body_row else {}
+                if body_row
+                else {}
+            )
 
-                # Activities
-                cur.execute(
-                    """
+            # Activities
+            cur.execute(
+                """
                     SELECT
                         COUNT(*) as total_activities,
                         ROUND(SUM(distance_meters)/1000.0, 1) as total_km,
@@ -160,20 +194,26 @@ def get_health_summary(days: int = 30) -> dict:
                     FROM activities
                     WHERE start_time >= NOW() - INTERVAL %s
                     """,
-                    (f"{days} days",),
+                (f"{days} days",),
+            )
+            acts_row = cur.fetchone()
+            acts = (
+                dict(
+                    zip(
+                        ["total_activities", "total_km", "avg_activity_hr", "activity_types"],
+                        acts_row,
+                        strict=False,
+                    )
                 )
-                acts_row = cur.fetchone()
-                acts = dict(
-                    zip([
-                        "total_activities", "total_km", "avg_activity_hr", "activity_types"
-                    ], acts_row)
-                ) if acts_row else {}
+                if acts_row
+                else {}
+            )
 
-                return {
-                    "period_days": days,
-                    "daily": daily,
-                    "body": body,
-                    "activities": acts,
-                }
+            return {
+                "period_days": days,
+                "daily": daily,
+                "body": body,
+                "activities": acts,
+            }
     except Exception as e:
         return {"error": str(e)}

@@ -1,7 +1,6 @@
 """Collect body metrics from Garmin."""
 
 import asyncio
-from datetime import date
 
 from garminconnect import Garmin
 

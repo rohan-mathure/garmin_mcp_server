@@ -14,6 +14,7 @@ app = typer.Typer(help="Body metrics")
 @app.command("weight")
 def weight(date_str: str = typer.Option("", "--date", "-d", help="YYYY-MM-DD")):
     """Weight and body fat."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
@@ -21,7 +22,7 @@ def weight(date_str: str = typer.Option("", "--date", "-d", help="YYYY-MM-DD")):
             return await asyncio.to_thread(garmin.get_body_composition, d)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -32,13 +33,14 @@ def composition(
     end: str = typer.Option("", "--end", "-e", help="End date YYYY-MM-DD"),
 ):
     """Body composition history."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_body_composition, start, end)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -46,6 +48,7 @@ def composition(
 @app.command("hrv")
 def hrv(date_str: str = typer.Option("", "--date", "-d", help="YYYY-MM-DD")):
     """Heart rate variability."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
@@ -53,7 +56,7 @@ def hrv(date_str: str = typer.Option("", "--date", "-d", help="YYYY-MM-DD")):
             return await asyncio.to_thread(garmin.get_hrv_data, d)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -61,6 +64,7 @@ def hrv(date_str: str = typer.Option("", "--date", "-d", help="YYYY-MM-DD")):
 @app.command("vo2max")
 def vo2max(date_str: str = typer.Option("", "--date", "-d", help="YYYY-MM-DD")):
     """VO2 max estimate."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
@@ -68,7 +72,7 @@ def vo2max(date_str: str = typer.Option("", "--date", "-d", help="YYYY-MM-DD")):
             return await asyncio.to_thread(garmin.get_vo2max_summary_by_date, d)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -76,6 +80,7 @@ def vo2max(date_str: str = typer.Option("", "--date", "-d", help="YYYY-MM-DD")):
 @app.command("training-readiness")
 def training_readiness(date_str: str = typer.Option("", "--date", "-d", help="YYYY-MM-DD")):
     """Training readiness score."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
@@ -83,7 +88,7 @@ def training_readiness(date_str: str = typer.Option("", "--date", "-d", help="YY
             return await asyncio.to_thread(garmin.get_training_readiness, d)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -91,6 +96,7 @@ def training_readiness(date_str: str = typer.Option("", "--date", "-d", help="YY
 @app.command("intensity-minutes")
 def intensity_minutes(date_str: str = typer.Option("", "--date", "-d", help="YYYY-MM-DD")):
     """Weekly intensity minutes."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
@@ -98,7 +104,7 @@ def intensity_minutes(date_str: str = typer.Option("", "--date", "-d", help="YYY
             return await asyncio.to_thread(garmin.get_weekly_intensity_minutes, d)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -106,12 +112,13 @@ def intensity_minutes(date_str: str = typer.Option("", "--date", "-d", help="YYY
 @app.command("race-predictions")
 def race_predictions():
     """Race finish time predictions."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_race_predictions)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))

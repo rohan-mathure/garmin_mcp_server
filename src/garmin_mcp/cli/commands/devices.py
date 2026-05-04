@@ -13,13 +13,14 @@ app = typer.Typer(help="Devices & gear")
 @app.command("list")
 def list_devices():
     """List connected devices."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_devices)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -27,13 +28,14 @@ def list_devices():
 @app.command("info")
 def device_info(device_id: int = typer.Argument(..., help="Device ID")):
     """Device settings and info."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_device_settings, device_id)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -41,13 +43,14 @@ def device_info(device_id: int = typer.Argument(..., help="Device ID")):
 @app.command("gear")
 def gear():
     """List gear and equipment."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_gear)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -55,13 +58,14 @@ def gear():
 @app.command("records")
 def personal_records():
     """Personal records and all-time bests."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_personal_record)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -69,12 +73,13 @@ def personal_records():
 @app.command("badges")
 def badges():
     """Earned badges and achievements."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_badges)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))

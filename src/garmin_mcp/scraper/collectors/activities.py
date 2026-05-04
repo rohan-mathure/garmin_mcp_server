@@ -28,7 +28,9 @@ async def collect_recent_activities(garmin: Garmin, limit: int = 20) -> list[dic
         }
         # Convert Unix timestamp to TIMESTAMPTZ string
         if row["start_time"]:
-            dt = datetime.fromtimestamp(row["start_time"] / 1000.0, tz=datetime.now().astimezone().tzinfo)
+            dt = datetime.fromtimestamp(
+                row["start_time"] / 1000.0, tz=datetime.now().astimezone().tzinfo
+            )
             row["start_time"] = dt.isoformat()
 
         results.append(row)

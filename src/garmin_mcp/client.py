@@ -10,7 +10,7 @@ from garminconnect import Garmin
 from mcp.server.fastmcp import Context
 
 from garmin_mcp.models import CredentialsInput, MFAInput
-from garmin_mcp.service import GarminService, CredentialProvider, MFAProvider
+from garmin_mcp.service import CredentialProvider, GarminService, MFAProvider
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -33,9 +33,7 @@ def _make_ctx_credential_provider(ctx: Context) -> CredentialProvider:
                 schema=CredentialsInput,
             )
             if result.action != "accept":
-                raise RuntimeError(
-                    "Credentials not provided — authentication cancelled"
-                )
+                raise RuntimeError("Credentials not provided — authentication cancelled")
             email = result.data.email
             password = result.data.password
 
@@ -44,9 +42,7 @@ def _make_ctx_credential_provider(ctx: Context) -> CredentialProvider:
     return credential_provider
 
 
-def _make_ctx_mfa_provider(
-    ctx: Context, loop: asyncio.AbstractEventLoop
-) -> MFAProvider:
+def _make_ctx_mfa_provider(ctx: Context, loop: asyncio.AbstractEventLoop) -> MFAProvider:
     """Create an MFA provider that uses MCP ctx.elicit() from executor thread."""
 
     mfa_code: list[str] = []

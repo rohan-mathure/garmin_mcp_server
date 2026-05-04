@@ -15,8 +15,7 @@ def get_db_url() -> str:
     url = os.environ.get("TIMESCALE_URL")
     if not url:
         raise RuntimeError(
-            "TIMESCALE_URL env var not set. "
-            "Expected: postgresql://user:pass@host:port/dbname"
+            "TIMESCALE_URL env var not set. Expected: postgresql://user:pass@host:port/dbname"
         )
     return url
 

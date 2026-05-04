@@ -16,13 +16,14 @@ def list_activities(
     limit: int = typer.Option(20, "--limit", help="Max results"),
 ):
     """List recent activities."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_activities, start, limit)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -30,13 +31,14 @@ def list_activities(
 @app.command("get")
 def get_activity(activity_id: int = typer.Argument(..., help="Activity ID")):
     """Get activity details."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_activity_details, activity_id)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -44,13 +46,14 @@ def get_activity(activity_id: int = typer.Argument(..., help="Activity ID")):
 @app.command("splits")
 def activity_splits(activity_id: int = typer.Argument(..., help="Activity ID")):
     """Get activity splits/laps."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_activity_splits, activity_id)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -58,13 +61,14 @@ def activity_splits(activity_id: int = typer.Argument(..., help="Activity ID")):
 @app.command("weather")
 def activity_weather(activity_id: int = typer.Argument(..., help="Activity ID")):
     """Get activity weather."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_activity_weather, activity_id)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))
 
@@ -72,6 +76,7 @@ def activity_weather(activity_id: int = typer.Argument(..., help="Activity ID"))
 @app.command("gpx")
 def activity_gpx(activity_id: int = typer.Argument(..., help="Activity ID")):
     """Download activity GPX."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
@@ -82,7 +87,7 @@ def activity_gpx(activity_id: int = typer.Argument(..., help="Activity ID")):
             )
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     result = asyncio.run(_run())
     if isinstance(result, bytes):
@@ -93,12 +98,13 @@ def activity_gpx(activity_id: int = typer.Argument(..., help="Activity ID")):
 @app.command("hr-zones")
 def activity_hr_zones(activity_id: int = typer.Argument(..., help="Activity ID")):
     """Get activity heart rate zones."""
+
     async def _run():
         try:
             garmin = await get_garmin_client()
             return await asyncio.to_thread(garmin.get_activity_hr_timeinzone, activity_id)
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     print_json(asyncio.run(_run()))

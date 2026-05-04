@@ -14,13 +14,14 @@ app = typer.Typer(help="Authentication")
 @app.command()
 def login():
     """Login to Garmin Connect."""
+
     async def _run():
         try:
-            client = await get_garmin_client()
+            await get_garmin_client()
             print_success("Logged in")
         except Exception as e:
             print_error(str(e))
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     asyncio.run(_run())
 

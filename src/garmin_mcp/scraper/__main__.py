@@ -9,7 +9,7 @@ from garmin_mcp.scraper.auth_adapter import make_env_credential_provider
 from garmin_mcp.scraper.collectors.activities import collect_recent_activities
 from garmin_mcp.scraper.collectors.body import collect_body_for_date
 from garmin_mcp.scraper.collectors.daily import collect_daily_range
-from garmin_mcp.scraper.scheduler import backup_job, register_jobs, scheduler
+from garmin_mcp.scraper.scheduler import register_jobs, scheduler
 from garmin_mcp.scraper.writer import upsert_activity, upsert_body, upsert_daily
 from garmin_mcp.service import GarminService
 

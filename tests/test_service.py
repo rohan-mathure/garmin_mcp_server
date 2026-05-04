@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 from garminconnect import GarminConnectAuthenticationError
 
-from garmin_mcp.service import CredentialProvider, GarminService, MFAProvider
+from garmin_mcp.service import GarminService
 
 
 @pytest.fixture
@@ -28,6 +28,7 @@ def mock_garmin_class(mocker):
 @pytest.mark.asyncio
 async def test_authenticate_success(service, mock_garmin_class, mocker):
     """Authenticate succeeds with valid credentials."""
+
     async def cred_provider() -> tuple[str, str]:
         return ("user@example.com", "password123")
 
@@ -53,6 +54,7 @@ async def test_authenticate_success(service, mock_garmin_class, mocker):
 @pytest.mark.asyncio
 async def test_authenticate_with_mfa(service, mock_garmin_class, mocker):
     """Authentication calls MFA provider when MFA is needed."""
+
     async def cred_provider() -> tuple[str, str]:
         return ("user@example.com", "password123")
 
@@ -82,6 +84,7 @@ async def test_authenticate_with_mfa(service, mock_garmin_class, mocker):
 @pytest.mark.asyncio
 async def test_authenticate_no_mfa_provider_raises(service, mock_garmin_class, mocker):
     """Authentication fails if MFA is needed but no provider given."""
+
     async def cred_provider() -> tuple[str, str]:
         return ("user@example.com", "password123")
 
@@ -106,6 +109,7 @@ async def test_authenticate_no_mfa_provider_raises(service, mock_garmin_class, m
 @pytest.mark.asyncio
 async def test_ensure_authenticated_caches_client(service, mock_garmin_class, mocker):
     """ensure_authenticated caches the client on first call."""
+
     async def cred_provider() -> tuple[str, str]:
         return ("user@example.com", "password123")
 
@@ -125,10 +129,9 @@ async def test_ensure_authenticated_caches_client(service, mock_garmin_class, mo
 
 
 @pytest.mark.asyncio
-async def test_ensure_authenticated_retries_on_auth_error(
-    service, mock_garmin_class, mocker
-):
+async def test_ensure_authenticated_retries_on_auth_error(service, mock_garmin_class, mocker):
     """ensure_authenticated retries once on GarminConnectAuthenticationError."""
+
     async def cred_provider() -> tuple[str, str]:
         return ("user@example.com", "password123")
 
@@ -157,6 +160,7 @@ async def test_ensure_authenticated_retries_on_auth_error(
 @pytest.mark.asyncio
 async def test_reset_clears_client(service, mocker):
     """reset() clears the cached client."""
+
     async def cred_provider() -> tuple[str, str]:
         return ("user@example.com", "password123")
 

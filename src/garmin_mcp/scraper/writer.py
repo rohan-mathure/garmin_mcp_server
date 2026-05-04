@@ -2,10 +2,8 @@
 
 import logging
 import os
-from datetime import datetime
 
 import psycopg2
-from psycopg2.extras import execute_values
 
 logger = logging.getLogger(__name__)
 

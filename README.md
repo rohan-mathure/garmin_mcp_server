@@ -1,75 +1,55 @@
-# Garmin Connect MCP Server
+# Garmin Connect — MCP Server, CLI, and Trending Data Pipeline
 
-MCP server exposing Garmin Connect data to Claude. Supports MFA authentication and covers daily health, activities, body metrics, training, devices, and goals.
+Garmin Connect data exposed to Claude via MCP, plus self-contained CLI and local time-series scraper with TimescaleDB.
 
-## Tools (28)
+## What's Included
 
-### Auth
-| Tool | Description |
-|------|-------------|
-| `garmin_login` | Login with email/password. Handles MFA if required. |
-| `garmin_logout` | Clear session and saved tokens. |
-| `garmin_auth_status` | Check authentication state and token file. |
+### 1. MCP Server (`garmin-mcp`)
+28 tools for querying Garmin Connect live data:
+- **Auth** (3): login, logout, status
+- **Daily health** (7): summary, steps, heart-rate, stress, spo2, sleep, calories
+- **Activities** (6): list, get, splits, weather, gpx, hr-zones
+- **Body & training** (7): weight, composition, hrv, vo2max, training-readiness, intensity-minutes, race-predictions
+- **Devices** (5): list, info, gear, records, badges
 
-### Daily Health
-| Tool | Description |
-|------|-------------|
-| `get_daily_summary` | Full daily snapshot: steps, calories, HR, distance. |
-| `get_steps` | Step count and daily goal. |
-| `get_heart_rate` | Resting HR, min/max, hourly timeline. |
-| `get_stress` | Stress score and timeline. |
-| `get_spo2` | Blood oxygen readings. |
-| `get_sleep` | Sleep stages, score, and duration. |
-| `get_calories` | Active, BMR, and total calorie breakdown. |
+### 2. CLI (`garmin-cli`)
+All 28 tools as typer subcommands. Same auth as MCP (env vars + interactive fallback).
+```bash
+garmin-cli daily steps --date 2025-04-15
+garmin-cli activities list --limit 10
+garmin-cli body vo2max
+```
 
-### Activities
-| Tool | Description |
-|------|-------------|
-| `list_activities` | Paginated activity list, most recent first. |
-| `get_activity` | Full activity detail by ID. |
-| `get_activity_splits` | Lap/split data for an activity. |
-| `get_activity_weather` | Weather recorded during an activity. |
-| `download_activity_gpx` | GPX file content as string. |
-| `get_activity_hr_zones` | Time spent in each HR zone. |
+### 3. Local Trending Data Pipeline
+**Architecture:**
+- **Scraper** (Docker): APScheduler runs 4 periodic jobs
+  - daily metrics @06:00 (last 2 days, idempotent)
+  - body metrics @07:00 (yesterday + today)
+  - activities every 4h (last 20)
+  - backup @03:00 (pg_dump → gzip → rclone to Google Drive)
+- **TimescaleDB** (Docker): 3 hypertables for persistent storage
+  - daily_metrics (date-partitioned, 13 columns)
+  - body_metrics (date-partitioned, 5 columns)
+  - activities (start_time-partitioned, 12 columns)
+- **MCP Trends Tools** (3): query local DB via Claude
+  - `get_metric_trend(metric, days)` — time-series data
+  - `query_health_db(sql)` — SELECT-only SQL passthrough
+  - `get_health_summary(days)` — aggregated stats
 
-### Body & Training
-| Tool | Description |
-|------|-------------|
-| `get_weight` | Weight and body fat % for a day. |
-| `get_body_composition` | Body composition history over a date range. |
-| `get_hrv` | Heart Rate Variability status and readings. |
-| `get_vo2max` | VO2 max estimate. |
-| `get_training_readiness` | Readiness score and contributing factors. |
-| `get_intensity_minutes` | Weekly moderate and vigorous intensity minutes. |
-| `get_race_predictions` | Predicted 5K/10K/half/marathon finish times. |
+**Backup:** pg_dump compressed to Google Drive via rclone (15GB free, one-time auth on host, then headless).
 
-### Devices, Gear & Goals
-| Tool | Description |
-|------|-------------|
-| `list_devices` | All connected Garmin devices. |
-| `get_device_info` | Device settings by ID. |
-| `list_gear` | Equipment (shoes, bikes, etc.) with mileage. |
-| `list_personal_records` | All-time bests across activity types. |
-| `list_badges` | Earned badges and completed challenges. |
+---
 
 ## Setup
 
-**1. Install dependencies**
+### Option 1: MCP Server Only
 ```bash
 uv sync
-```
-
-**2. Configure credentials**
-```bash
 cp .env.example .env
-# Edit .env with your Garmin email and password
+# Edit .env with GARMIN_EMAIL and GARMIN_PASSWORD
 ```
 
-**3. Add to Claude Code**
-
-Add `.mcp.json` (already in repo root) to Claude Code via `/mcp add` or restart Claude Code. The `garmin` server will appear automatically.
-
-Alternatively, add to `~/.claude.json` for global access:
+Add to Claude Code via `/mcp add` or `~/.claude.json`:
 ```json
 {
   "mcpServers": {
@@ -81,17 +61,169 @@ Alternatively, add to `~/.claude.json` for global access:
 }
 ```
 
+### Option 2: CLI Only
+```bash
+uv sync
+export GARMIN_EMAIL=your-email
+export GARMIN_PASSWORD=your-password
+uv run garmin-cli --help
+```
+
+### Option 3: Full Stack (Docker + Scraper + Trends)
+
+**Prerequisites:**
+- Docker Compose v2
+- Garmin credentials in `.env`
+- (Optional) Google Drive backup: one-time `rclone config` on host
+
+**Start:**
+```bash
+docker compose up --build
+```
+
+Scraper will:
+1. Wait for TimescaleDB to be ready
+2. Create 3 hypertables
+3. Backfill last 7 days of daily/body metrics, last 50 activities
+4. Register APScheduler jobs
+5. Keep running (logs via `docker compose logs scraper`)
+
+**Query locally:**
+```bash
+export TIMESCALE_URL=postgresql://garmin:garmin@localhost:5432/garmin
+uv run garmin-mcp  # MCP server queries local DB via trends tools
+```
+
+---
+
+## Architecture: Shared Backend
+
+All three interfaces (MCP, CLI, scraper) use the same `GarminService` class, which is auth-agnostic via callback protocols:
+- **MCP adapter**: `ctx.elicit()` for credentials/MFA, threading bridge for MFA from executor thread
+- **CLI adapter**: `typer.prompt()` for env-var fallback
+- **Scraper adapter**: env-only (raises if missing, no interactive fallback)
+
+All 28 Garmin tools unchanged. Trends tools (@mcp.tool) added to existing server without modifying tool modules.
+
+---
+
 ## Authentication
 
-On first tool call, the server:
-1. Reads `GARMIN_EMAIL` / `GARMIN_PASSWORD` from environment
-2. If not set, prompts via Claude's elicitation UI
-3. If Garmin requires MFA, Claude prompts for the OTP code
+### MCP / CLI
+1. Read `GARMIN_EMAIL` / `GARMIN_PASSWORD` from env
+2. If missing, prompt (MCP via ctx.elicit, CLI via typer.prompt)
+3. If MFA required, prompt for OTP (120s timeout)
 
-Tokens are cached at `~/.garminconnect/garmin_tokens.json` and auto-refreshed. Re-authentication is only needed if the refresh token expires (typically after months).
+Tokens cached at `~/.garminconnect/garmin_tokens.json`, auto-refreshed.
+
+### Scraper
+Env vars only (no interactive prompt). Raises RuntimeError if missing.
+
+---
+
+## Docker Compose
+
+**Services:**
+- `timescaledb`: PostgreSQL 16 + TimescaleDB extension
+  - Port: 5432
+  - DB: garmin / User: garmin / Pass: garmin
+  - Volume: ts_data (persists across restarts)
+  - Healthcheck: pg_isready
+- `scraper`: Python 3.12 scraper with uv
+  - Env vars: GARMIN_EMAIL, GARMIN_PASSWORD, TIMESCALE_URL
+  - Volumes: rclone config (read-only, for Google Drive backup)
+  - Depends on timescaledb healthcheck
+
+**Data Persistence:**
+- Named volume `ts_data` mounted at `/var/lib/postgresql/data` in container
+- On host: inspect with `docker volume ls` and `docker volume inspect garmin_mcp_server_ts_data`
+- Survives `docker compose down` (preserves data)
+
+**Backup:**
+Set up once on host:
+```bash
+rclone config  # Add remote "gdrive-garmin" (type: drive, OAuth once)
+rclone mkdir "gdrive-garmin:garmin-health-backup"
+```
+
+Mount rclone config into scraper:
+```yaml
+volumes:
+  - ${HOME}/.config/rclone:/root/.config/rclone:ro
+```
+
+Scraper backup job runs daily @03:00, uploading `garmin_backup_YYYY-MM-DD.sql.gz` to Google Drive.
+
+---
+
+## Tools Reference
+
+### Trends Tools (query local TimescaleDB)
+
+**get_metric_trend**
+```
+metric: str (steps, calories_active, resting_hr, weight_kg, vo2max, etc.)
+days: int (default 30)
+→ list[dict] with date and value
+```
+
+**query_health_db**
+```
+sql: str (SELECT/WITH only, no INSERT/UPDATE/DELETE)
+→ list[dict] rows from daily_metrics, body_metrics, or activities
+```
+
+**get_health_summary**
+```
+days: int (default 30)
+→ dict with aggregated stats:
+  daily: {avg_steps, max_steps, avg_resting_hr, avg_sleep_hours, avg_stress, avg_spo2, days_with_data}
+  body: {avg_weight_kg, avg_vo2max, avg_hrv, avg_readiness}
+  activities: {total_activities, total_km, avg_activity_hr, activity_types}
+```
+
+### Original 28 Tools
+See above for full list or `garmin-cli --help` for CLI equivalents.
+
+---
+
+## Development
+
+**Install & test:**
+```bash
+uv sync --all-extras
+uv run pytest --cov=src/garmin_mcp --cov-fail-under=90
+```
+
+**Run MCP server locally:**
+```bash
+uv run garmin-mcp
+```
+
+**Run CLI:**
+```bash
+uv run garmin-cli auth login
+uv run garmin-cli daily steps
+```
+
+**Start scraper (without Docker):**
+```bash
+export TIMESCALE_URL=postgresql://garmin:garmin@localhost:5432/garmin
+uv run python -m garmin_mcp.scraper
+```
+
+---
 
 ## Requirements
 
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/)
-- A Garmin Connect account
+- Garmin Connect account
+- Docker Compose v2 (for scraper stack)
+- PostgreSQL/TimescaleDB (Docker or local, for scraper)
+
+---
+
+## License & Attribution
+
+Builds on [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) library.

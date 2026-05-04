@@ -1,7 +1,5 @@
 """Tests for CLI output formatting."""
 
-import json
-
 from garmin_mcp.cli.output import print_json, print_success, print_table
 
 

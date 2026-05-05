@@ -12,9 +12,13 @@ async def collect_recent_activities(garmin: Garmin, limit: int = 20) -> list[dic
 
     results = []
     for activity in activities:
+        start_time = activity.get("startTimeInSeconds")
+        if not start_time:
+            continue
+
         row = {
             "activity_id": activity.get("activityId"),
-            "start_time": activity.get("startTimeInSeconds"),  # Unix timestamp, convert below
+            "start_time": None,  # Set below after conversion
             "activity_type": activity.get("activityType", {}).get("typeKey"),
             "name": activity.get("activityName"),
             "duration_seconds": activity.get("duration"),
@@ -27,11 +31,8 @@ async def collect_recent_activities(garmin: Garmin, limit: int = 20) -> list[dic
             "avg_power": activity.get("avgPower"),
         }
         # Convert Unix timestamp to TIMESTAMPTZ string
-        if row["start_time"]:
-            dt = datetime.fromtimestamp(
-                row["start_time"] / 1000.0, tz=datetime.now().astimezone().tzinfo
-            )
-            row["start_time"] = dt.isoformat()
+        dt = datetime.fromtimestamp(start_time / 1000.0, tz=datetime.now().astimezone().tzinfo)
+        row["start_time"] = dt.isoformat()
 
         results.append(row)
 
